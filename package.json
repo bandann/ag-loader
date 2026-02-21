@@ -1,5 +1,5 @@
 {
-  "name": "ag-loader",
+  "name": "bandev-ag-loader",
   "version": "1.0.0",
   "description": "CLI global para cargar skills, agents y rules de IA a cualquier proyecto. Compatible con Antigravity, Cursor y VS Code.",
   "main": "dist/index.js",
