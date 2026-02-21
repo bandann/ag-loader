@@ -1,0 +1,59 @@
+{
+  "name": "ag-loader",
+  "version": "1.0.0",
+  "description": "CLI global para cargar skills, agents y rules de IA a cualquier proyecto. Compatible con Antigravity, Cursor y VS Code.",
+  "main": "dist/index.js",
+  "bin": {
+    "ag-loader": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "keywords": [
+    "cli",
+    "ai",
+    "skills",
+    "agents",
+    "rules",
+    "cursor",
+    "antigravity",
+    "vscode",
+    "clinerules",
+    "mdc",
+    "prompt",
+    "loader"
+  ],
+  "author": "soy-bandann",
+  "license": "MIT",
+  "homepage": "https://github.com/soy-bandann/ag-loader#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soy-bandann/ag-loader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/soy-bandann/ag-loader/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^14.0.3",
+    "fs-extra": "^11.3.3",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^25.3.0",
+    "@types/prompts": "^2.4.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
