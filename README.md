@@ -1,8 +1,8 @@
-# ag-loader
+# bandev-ag-loader
 
 > CLI global para cargar skills, agents y rules de IA a cualquier proyecto, adaptado para Antigravity, Cursor y VS Code.
 
-[![npm version](https://img.shields.io/npm/v/ag-loader.svg)](https://www.npmjs.com/package/ag-loader)
+[![npm version](https://img.shields.io/npm/v/bandev-ag-loader.svg)](https://www.npmjs.com/package/bandev-ag-loader)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -13,16 +13,16 @@
 
 | Editor          | Destino en el proyecto | Formato                            |
 | --------------- | ---------------------- | ---------------------------------- |
-| **Antigravity** | `agents/`              | `.md`                              |
+| **Antigravity** | `.agents/`             | `.md`                              |
 | **Cursor**      | `.cursor/rules/`       | `.mdc` + frontmatter auto-generado |
-| **VS Code**     | `.clinerules`          | Un archivo concatenado             |
+| **VS Code**     | `.clinerules/`         | `.md` individual o concatenado     |
 
 ---
 
 ## Instalación
 
 ```bash
-npm install -g ag-loader
+npm install -g bandev-ag-loader
 ```
 
 ---
@@ -158,7 +158,7 @@ La configuración se guarda en `~/.ag-loader.json`.
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/soy-bandann/ag-loader.git
+git clone https://github.com/bandann/ag-loader.git
 cd ag-loader
 
 # Instalar dependencias
@@ -187,4 +187,4 @@ npm run dev
 
 ## Licencia
 
-MIT © [soy-bandann](https://github.com/soy-bandann)
+MIT © [bandann](https://github.com/bandann)

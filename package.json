@@ -1,10 +1,10 @@
 {
   "name": "bandev-ag-loader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CLI global para cargar skills, agents y rules de IA a cualquier proyecto. Compatible con Antigravity, Cursor y VS Code.",
   "main": "dist/index.js",
   "bin": {
-    "ag-loader": "./dist/index.js"
+    "ag-loader": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -32,13 +32,13 @@
   ],
   "author": "soy-bandann",
   "license": "MIT",
-  "homepage": "https://github.com/soy-bandann/ag-loader#readme",
+  "homepage": "https://github.com/bandann/ag-loader#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/soy-bandann/ag-loader.git"
+    "url": "git+https://github.com/bandann/ag-loader.git"
   },
   "bugs": {
-    "url": "https://github.com/soy-bandann/ag-loader/issues"
+    "url": "https://github.com/bandann/ag-loader/issues"
   },
   "engines": {
     "node": ">=18.0.0"
