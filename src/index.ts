@@ -103,7 +103,8 @@ async function injectAntigravity(category: CategoryEntry): Promise<void> {
 
   for (const file of category.files) {
     const src      = path.join(category.absPath, file);
-    const baseName = path.basename(file, '.md');
+    const ext      = path.extname(file);
+    const baseName = path.basename(file, ext);
     const skillDir = path.join(skillsDir, baseName);
     const dest     = path.join(skillDir, 'SKILL.md');
     await fs.ensureDir(skillDir);
@@ -142,7 +143,8 @@ async function injectCursor(
 
   for (const file of category.files) {
     const src      = path.join(category.absPath, file);
-    const baseName = path.basename(file, '.md');
+    const ext      = path.extname(file);                     // .md or .mdc
+    const baseName = path.basename(file, ext);
     const destName = baseName + '.mdc';
     const dest     = path.join(destDir, destName);
 
@@ -183,7 +185,8 @@ async function injectCopilot(
 
     for (const file of category.files) {
       const src      = path.join(category.absPath, file);
-      const baseName = path.basename(file, '.md');
+      const ext      = path.extname(file);
+      const baseName = path.basename(file, ext);
       const destName = baseName + '.instructions.md';
       const dest     = path.join(destDir, destName);
 

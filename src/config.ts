@@ -76,7 +76,7 @@ export async function getCategoriesForStack(
 
   const subDirs = entries.filter((e) => e.isDirectory());
   const rootMd  = entries
-    .filter((e) => e.isFile() && e.name.endsWith('.md'))
+    .filter((e) => e.isFile() && (e.name.endsWith('.md') || e.name.endsWith('.mdc')))
     .map((e) => e.name);
 
   if (subDirs.length === 0) {
@@ -87,7 +87,7 @@ export async function getCategoriesForStack(
   for (const dir of subDirs) {
     const catPath = path.join(stackPath, dir.name);
     const files = (await fs.readdir(catPath, { withFileTypes: true }))
-      .filter((e) => e.isFile() && e.name.endsWith('.md'))
+      .filter((e) => e.isFile() && (e.name.endsWith('.md') || e.name.endsWith('.mdc')))
       .map((e) => e.name);
     cats.push({ name: dir.name, files, absPath: catPath });
   }

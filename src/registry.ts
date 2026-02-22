@@ -73,6 +73,8 @@ export async function ensureRegistryExists(): Promise<void> {
           ? 'senior-developer.md'
           : category === 'agents'
           ? 'code-reviewer.md'
+          : category === 'instructions'
+          ? 'senior-developer.md'
           : 'best-practices.md';
 
         await fs.writeFile(path.join(dirPath, fileName), content, 'utf-8');
