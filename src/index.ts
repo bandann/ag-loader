@@ -21,9 +21,9 @@ import {
 // ─── Editor definitions ───────────────────────────────────────────────────────
 
 const EDITORS: { key: EditorKey; label: string; hint: string }[] = [
-  { key: 'antigravity', label: 'Antigravity', hint: 'Genera archivos .md en .agents/'            },
-  { key: 'cursor',      label: 'Cursor',      hint: 'Genera archivos .mdc en .cursor/rules/'     },
-  { key: 'vscode',      label: 'VS Code',     hint: 'Genera archivos en .clinerules/ (Cline/RooCode)' },
+  { key: 'antigravity', label: 'Antigravity', hint: 'Skills en .agent/skills/ (SKILL.md)'              },
+  { key: 'cursor',      label: 'Cursor',      hint: 'Reglas .mdc en .cursor/rules/'                   },
+  { key: 'vscode',      label: 'VS Code',     hint: 'Instrucciones Copilot en .github/instructions/'  },
 ];
 
 // ─── Globs por stack name ─────────────────────────────────────────────────────
@@ -70,6 +70,19 @@ function buildMdcFrontmatter(opts: {
   return `---\ndescription: ${opts.description}\nglobs: ${opts.globs}\nalwaysApply: ${opts.alwaysApply}\n---\n\n`;
 }
 
+/** Construye frontmatter YAML para Antigravity SKILL.md */
+function buildSkillFrontmatter(opts: {
+  name: string;
+  description: string;
+}): string {
+  return `---\nname: ${opts.name}\ndescription: ${opts.description}\n---\n\n`;
+}
+
+/** Construye frontmatter para VS Code Copilot .instructions.md */
+function buildCopilotFrontmatter(opts: { applyTo: string }): string {
+  return `---\napplyTo: "${opts.applyTo}"\n---\n\n`;
+}
+
 /** Lee un archivo .md y devuelve su contenido, sin frontmatter si ya tiene */
 async function readMarkdown(filePath: string): Promise<string> {
   const raw = await fs.readFile(filePath, 'utf-8');
@@ -80,25 +93,35 @@ async function readMarkdown(filePath: string): Promise<string> {
   return raw;
 }
 
-// ─── Injection: Antigravity (.agents/) ───────────────────────────────────────
-// Antigravity reads from .agents/, .agent/, _agents/, _agent/ automatically.
-// Files stay as .md with their original content.
+// ─── Injection: Antigravity (.agent/skills/<name>/SKILL.md) ──────────────────
+// Antigravity skills require: .agent/skills/<skill-name>/SKILL.md
+// Each SKILL.md has YAML frontmatter with name + description.
 
 async function injectAntigravity(category: CategoryEntry): Promise<void> {
-  const destDir = path.join(process.cwd(), '.agents');
-  await fs.ensureDir(destDir);
+  const skillsDir = path.join(process.cwd(), '.agent', 'skills');
+  await fs.ensureDir(skillsDir);
 
   for (const file of category.files) {
-    const src  = path.join(category.absPath, file);
-    const dest = path.join(destDir, file);
-    await fs.copyFile(src, dest);
-    console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.agents/${file}`)}`);
+    const src      = path.join(category.absPath, file);
+    const baseName = path.basename(file, '.md');
+    const skillDir = path.join(skillsDir, baseName);
+    const dest     = path.join(skillDir, 'SKILL.md');
+    await fs.ensureDir(skillDir);
+
+    const bodyContent = await readMarkdown(src);
+    const description = extractH1(bodyContent) || baseName;
+
+    const finalContent =
+      buildSkillFrontmatter({ name: baseName, description }) + bodyContent;
+
+    await fs.writeFile(dest, finalContent, 'utf-8');
+    console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.agent/skills/${baseName}/SKILL.md`)}`);
   }
 
   console.log('');
   console.log(
-    chalk.bold.green(`✅ ${category.files.length} archivo(s) → `) +
-    chalk.white('.agents/') +
+    chalk.bold.green(`✅ ${category.files.length} skill(s) → `) +
+    chalk.white('.agent/skills/') +
     chalk.dim('  (Antigravity cargará estos skills automáticamente)')
   );
 }
@@ -141,47 +164,48 @@ async function injectCursor(
   );
 }
 
-// ─── Injection: VS Code / Cline / RooCode (.clinerules/) ─────────────────────
-// Cline v3+ soporta .clinerules/ como directorio con archivos individuales.
-// También acepta un único .clinerules en la raíz (modo legacy).
-// RooCode usa .roo/rules/ — se genera automáticamente también.
+// ─── Injection: VS Code / Copilot (.github/instructions/) ────────────────────
+// GitHub Copilot soporta:
+//   - .github/instructions/*.instructions.md  (por contexto, con applyTo)
+//   - .github/copilot-instructions.md          (repo-wide, todo consolidado)
 
-async function injectVSCode(
+async function injectCopilot(
   category: CategoryEntry,
-  mode: 'directory' | 'single'
+  stackName: string,
+  mode: 'instructions' | 'global'
 ): Promise<void> {
-  if (mode === 'directory') {
-    // .clinerules/ — cada archivo se mantiene individual
-    const destDir = path.join(process.cwd(), '.clinerules');
+  if (mode === 'instructions') {
+    // Modo instrucciones por contexto
+    const destDir = path.join(process.cwd(), '.github', 'instructions');
     await fs.ensureDir(destDir);
 
-    for (const file of category.files) {
-      const src  = path.join(category.absPath, file);
-      const dest = path.join(destDir, file);
-      const content = await readMarkdown(src);
-      await fs.writeFile(dest, content, 'utf-8');
-      console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.clinerules/${file}`)}`);
-    }
+    const applyTo = globForStack(stackName);
 
-    // También genera .roo/rules/ para RooCode
-    const rooDir = path.join(process.cwd(), '.roo', 'rules');
-    await fs.ensureDir(rooDir);
     for (const file of category.files) {
-      const src  = path.join(category.absPath, file);
-      const dest = path.join(rooDir, file);
-      const content = await readMarkdown(src);
-      await fs.writeFile(dest, content, 'utf-8');
-      console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.roo/rules/${file}`)} ${chalk.dim('(RooCode)')}`);
+      const src      = path.join(category.absPath, file);
+      const baseName = path.basename(file, '.md');
+      const destName = baseName + '.instructions.md';
+      const dest     = path.join(destDir, destName);
+
+      const bodyContent = await readMarkdown(src);
+      const finalContent =
+        buildCopilotFrontmatter({ applyTo }) + bodyContent;
+
+      await fs.writeFile(dest, finalContent, 'utf-8');
+      console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.github/instructions/${destName}`)}`);
     }
 
     console.log('');
     console.log(
-      chalk.bold.green(`✅ ${category.files.length} regla(s) → `) +
-      chalk.white('.clinerules/  .roo/rules/')
+      chalk.bold.green(`✅ ${category.files.length} instrucción(es) → `) +
+      chalk.white('.github/instructions/') +
+      chalk.dim(`  (applyTo: ${applyTo})`)
     );
   } else {
-    // Modo legacy: un único archivo .clinerules en la raíz
-    const dest = path.join(process.cwd(), '.clinerules');
+    // Modo global: todo consolidado en un único archivo
+    const destDir = path.join(process.cwd(), '.github');
+    await fs.ensureDir(destDir);
+    const dest = path.join(destDir, 'copilot-instructions.md');
     const sections: string[] = [];
 
     for (const file of category.files) {
@@ -192,9 +216,9 @@ async function injectVSCode(
     }
 
     await fs.writeFile(dest, sections.join('\n\n---\n\n'), 'utf-8');
-    console.log(`   ${chalk.green('✔')} ${chalk.cyan('.clinerules')} (${category.files.length} skill(s) concatenados)`);
+    console.log(`   ${chalk.green('✔')} ${chalk.cyan('.github/copilot-instructions.md')} (${category.files.length} skill(s) consolidados)`);
     console.log('');
-    console.log(chalk.bold.green(`✅ Consolidado en `) + chalk.white('.clinerules'));
+    console.log(chalk.bold.green(`✅ Consolidado en `) + chalk.white('.github/copilot-instructions.md'));
   }
 }
 
@@ -377,7 +401,7 @@ program
     // ── Paso 4: Opciones específicas por editor ────────────────────────────
 
     let alwaysApply = false;
-    let vscodeMode: 'directory' | 'single' = 'directory';
+    let copilotMode: 'instructions' | 'global' = 'instructions';
 
     if (selectedEditor === 'cursor') {
       const { apply } = await prompts(
@@ -406,21 +430,21 @@ program
         {
           type: 'select',
           name: 'mode',
-          message: '📁 ¿Cómo quieres generar las reglas?',
+          message: '📁 ¿Cómo quieres generar las instrucciones para Copilot?',
           choices: [
             {
-              title: `Directorio .clinerules/  ${chalk.dim('un archivo .md por skill (Cline v3+ y RooCode)')}`,
-              value: 'directory',
+              title: `Por contexto (.github/instructions/)  ${chalk.dim('un .instructions.md por skill con applyTo')}`,
+              value: 'instructions',
             },
             {
-              title: `Archivo único .clinerules ${chalk.dim('todo concatenado (modo clásico)')}`,
-              value: 'single',
+              title: `Global (.github/copilot-instructions.md) ${chalk.dim('todo consolidado en un solo archivo')}`,
+              value: 'global',
             },
           ],
         },
         { onCancel: () => process.exit(0) }
       );
-      vscodeMode = mode as 'directory' | 'single';
+      copilotMode = mode as 'instructions' | 'global';
     }
 
     // ── Paso 5: Inyección ──────────────────────────────────────────────────
@@ -445,7 +469,7 @@ program
           await injectCursor(cat, selectedStack, alwaysApply);
           break;
         case 'vscode':
-          await injectVSCode(cat, vscodeMode);
+          await injectCopilot(cat, selectedStack, copilotMode);
           break;
       }
     }

@@ -60,7 +60,7 @@ export async function ensureRegistryExists(): Promise<void> {
   const scaffold: Record<string, Record<string, Record<string, string>>> = {
     antigravity: { react: { skills: DEMO_SKILL,  agents: DEMO_AGENT } },
     cursor:      { react: { rules:  DEMO_RULE                       } },
-    vscode:      { react: { agents: DEMO_AGENT,  rules:  DEMO_RULE  } },
+    vscode:      { react: { instructions: DEMO_SKILL, rules: DEMO_RULE } },
   };
 
   for (const [editor, stacks] of Object.entries(scaffold)) {
