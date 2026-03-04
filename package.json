@@ -16,7 +16,9 @@
   },
   "files": [
     "dist/",
-    "README.md"
+    "!dist/__tests__/",
+    "README.md",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "cli",
