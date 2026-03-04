@@ -1,6 +1,7 @@
 # bandev-ag-loader
 
-> CLI global para cargar skills, agents y rules de IA a cualquier proyecto, adaptado para Antigravity, Cursor y VS Code.
+> CLI global para cargar agents y skills de IA en cualquier proyecto.  
+> Compatible con **Claude Code**, **GitHub Copilot**, **Cursor** y **Antigravity**.
 
 [![npm version](https://img.shields.io/npm/v/bandev-ag-loader.svg)](https://www.npmjs.com/package/bandev-ag-loader)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -9,13 +10,21 @@
 
 ## ¿Qué hace?
 
-`ag-loader` lee un directorio global de skills (`~/.ag-skills/`) y los inyecta en cualquier proyecto con el formato correcto para el editor que uses:
+`ag-loader` mantiene un repositorio global de agentes y skills de IA en tu PC y los inyecta en cualquier proyecto con el formato correcto para tu herramienta de IA:
 
-| Editor          | Destino en el proyecto | Formato                            |
-| --------------- | ---------------------- | ---------------------------------- |
-| **Antigravity** | `.agents/`             | `.md`                              |
-| **Cursor**      | `.cursor/rules/`       | `.mdc` + frontmatter auto-generado |
-| **VS Code**     | `.clinerules/`         | `.md` individual o concatenado     |
+| Herramienta        | Archivos generados en el proyecto                            |
+| ------------------ | ------------------------------------------------------------ |
+| **Claude Code**    | `CLAUDE.md`, `.claude/agents/`, `.claude/project.config.yml` |
+| **GitHub Copilot** | `.github/instructions/` o `copilot-instructions.md`          |
+| **Cursor**         | `.cursor/rules/` (`.mdc` con frontmatter auto)               |
+| **Antigravity**    | `.agent/skills/` (`.md` con frontmatter)                     |
+
+**Características clave:**
+
+- 🔍 **Detección automática** de herramientas ya instaladas en el proyecto
+- ♻️ **Re-carga con un click** desde el último origen configurado
+- 🔒 **Auto-gitignore**: Los agentes se excluyen del repositorio automáticamente
+- 📁 **Filtrado por editor**: Antigravity solo ve sus archivos compatibles
 
 ---
 
@@ -25,153 +34,245 @@
 npm install -g bandev-ag-loader
 ```
 
----
-
-## Estructura del directorio de skills
-
-Organiza tus skills bajo `~/.ag-skills/` con la siguiente estructura:
-
-```
-~/.ag-skills/
-├── antigravity/          ← editor
-│   ├── react/            ← stack (tecnología)
-│   │   ├── skills/       ← categoría
-│   │   │   └── senior-developer.md
-│   │   └── agents/
-│   │       └── code-reviewer.md
-│   └── shopify/
-│       └── rules/
-│           └── liquid-best-practices.md
-├── cursor/
-│   └── react/
-│       └── rules/
-│           └── best-practices.md
-└── vscode/
-    └── react/
-        └── agents/
-            └── architect.md
-```
-
-> **Primera ejecución**: si `~/.ag-skills/` no existe, `ag-loader` lo crea automáticamente con ejemplos de referencia para los tres editores.
-
----
-
-## Uso
-
-### `ag-loader init`
-
-Flujo interactivo completo: Editor → Stack → Categoría → Inyección.
+Verifica la instalación:
 
 ```bash
+ag-loader --version   # → 1.3.0
+```
+
+---
+
+## Guía de integración paso a paso
+
+### Para Claude Code
+
+#### 1. Organiza tus agentes en el disco
+
+Crea la siguiente estructura en cualquier directorio de tu PC (por ejemplo, `E:\mis-agentes`):
+
+```
+E:\mis-agentes\
+└── claude-code\                 ← nombre de la herramienta (fijo)
+    ├── shopify\                 ← nombre del stack / tecnología
+    │   ├── CLAUDE.md            ← instrucciones del orquestador principal
+    │   └── agents\              ← agentes especializados
+    │       ├── SHOPIFY_ORCHESTRATOR.md
+    │       ├── AGENT_FIGMA_PIXEL_PERFECT.md
+    │       ├── AGENT_TEMPLATE_ARCHITECT.md
+    │       ├── AGENT_PDP_SPECIALIST.md
+    │       ├── AGENT_SECTION_BUILDER.md
+    │       └── AGENT_AUDITOR_PERFORMANCE.md
+    ├── reactjs\
+    │   ├── CLAUDE.md
+    │   └── agents\
+    │       ├── AGENT_COMPONENTS.md
+    │       └── AGENT_STATE_MANAGER.md
+    └── nextjs\
+        ├── CLAUDE.md
+        └── agents\
+            └── AGENT_API_ROUTES.md
+```
+
+#### 2. Apunta ag-loader a tu carpeta de agentes
+
+```bash
+ag-loader agents set-path "E:\mis-agentes"
+```
+
+#### 3. Carga los agentes en tu proyecto
+
+Abre una terminal **dentro de la carpeta del proyecto** donde quieres cargar los agentes:
+
+```bash
+cd mi-proyecto-shopify
 ag-loader init
 ```
 
+#### 4. Flujo interactivo
+
 ```
-🖥  ¿Con qué editor estás trabajando?
-  › Antigravity    Crea agents/ con archivos .md
-    Cursor         Crea .cursor/rules/ con archivos .mdc
-    VS Code        Genera un único .clinerules
+ag-loader — cargador de IA v1.3.0
 
-📦 ¿Qué stack?
-  › react
-    shopify
+ℹ Se detectó configuración de: Claude Code   ← si ya tienes agentes
+? ¿Qué quieres hacer?
+  › Usar existentes (no hacer nada)
+    Re-cargar / Actualizar agentes            ← actualiza en un click
+    Configurar nueva herramienta
 
-🗂  ¿Qué categoría de "react"?
-  › ✦ Cargar todo el stack  (todas las categorías)
-    agents         3 archivo(s)
-    skills         2 archivo(s)
-    rules          1 archivo(s)
+# Si es la primera vez:
+? ¿Desde qué directorio quieres cargar?
+  › Agentes (global)   E:\mis-agentes
+    Skills (global)    C:\Users\tú\.ag-skills
+    Otro (personalizado)...
+
+? ¿Qué herramienta de IA de desarrollo quieres usar?
+  › CLAUDE CODE     Agentes, CLAUDE.md, .claude/
+    GITHUB COPILOT  Instrucciones VS Code .github/
+    OTRAS (Cursor, AG)  Skills y reglas standard
+
+? ¿Para qué tecnología quieres cargar agentes?
+  › shopify
+    reactjs
+    nextjs
 ```
 
-- Selecciona una **categoría** para cargar solo esos archivos.
-- Selecciona **"✦ Cargar todo el stack"** para inyectar todas las categorías de una vez.
+#### 5. Resultado en tu proyecto
+
+```
+mi-proyecto-shopify/
+├── CLAUDE.md                     ← copiado desde tus agentes
+├── .claude/
+│   ├── project.config.yml        ← creado automáticamente
+│   └── agents/
+│       ├── SHOPIFY_ORCHESTRATOR.md
+│       ├── AGENT_FIGMA_PIXEL_PERFECT.md
+│       └── ... (todos tus agentes)
+└── .gitignore                    ← actualizado: .claude/ y CLAUDE.md excluidos
+```
+
+> Los agentes son **locales al desarrollador**: `CLAUDE.md` y `.claude/` se añaden automáticamente a `.gitignore`.
 
 ---
 
-### `ag-loader list`
+### Para GitHub Copilot (VS Code)
 
-Muestra todos los stacks y archivos disponibles en tu directorio, agrupados por editor.
+#### 1. Organiza tus skills
+
+```
+~\.ag-skills\
+└── vscode\
+    └── shopify\
+        └── rules\
+            ├── liquid-best-practices.md
+            └── theme-structure.md
+```
+
+#### 2. Carga en el proyecto
 
 ```bash
-ag-loader list
-
-# Filtrar por editor específico
-ag-loader list --editor cursor
-ag-loader list --editor antigravity
-ag-loader list --editor vscode
-```
-
-Salida de ejemplo:
-
-```
-📂 Skills disponibles
-   C:\Users\tu-usuario\.ag-skills
-
-  ┌─ ANTIGRAVITY
-  │  [react]  5 archivo(s)
-  │     ▸ skills  (3)
-  │        • senior-developer.md
-  │        • junior-developer.md
-  │     ▸ agents  (2)
-  │        • code-reviewer.md
-  └────────────────────────────────────────
+cd mi-proyecto
+ag-loader init
+# Selecciona: Skills → GITHUB COPILOT → shopify → rules
 ```
 
 ---
 
-### `ag-loader config`
+### Para Cursor
 
-Gestiona la configuración del CLI.
-
-```bash
-# Apuntar a una carpeta personalizada en tu PC
-ag-loader config set-path "C:\MiCarpeta\Skills"
-ag-loader config set-path "/home/user/mis-skills"
-
-# Ver la ruta activa
-ag-loader config get-path
-
-# Restaurar al directorio predeterminado (~/.ag-skills/)
-ag-loader config reset
+```
+~\.ag-skills\
+└── cursor\
+    └── reactjs\
+        └── rules\
+            ├── components.md
+            └── hooks.md
 ```
 
-La configuración se guarda en `~/.ag-loader.json`.
+Las reglas se convierten automáticamente a `.mdc` con frontmatter de Cursor.
+
+---
+
+### Para Antigravity
+
+> **Nota**: Antigravity filtra el directorio para mostrar solo carpetas llamadas `claude-code` o `antigravity-rules`.
+
+```
+~\.ag-skills\
+└── antigravity-rules\
+    └── general\
+        └── rules\
+            └── coding-standards.md
+```
 
 ---
 
 ## Comandos de referencia
 
-| Comando                            | Descripción                          |
-| ---------------------------------- | ------------------------------------ |
-| `ag-loader init`                   | Flujo interactivo para cargar skills |
-| `ag-loader list`                   | Ver todos los stacks disponibles     |
-| `ag-loader list --editor <editor>` | Filtrar por editor                   |
-| `ag-loader config set-path <ruta>` | Cambiar directorio de skills         |
-| `ag-loader config get-path`        | Ver directorio activo                |
-| `ag-loader config reset`           | Restaurar directorio predeterminado  |
-| `ag-loader --version`              | Ver versión                          |
-| `ag-loader --help`                 | Ver ayuda general                    |
+### `ag-loader init`
+
+Flujo interactivo completo con detección automática.
+
+```bash
+ag-loader init
+```
+
+### `ag-loader list`
+
+Lista todos los stacks disponibles en tu directorio activo.
+
+```bash
+ag-loader list
+ag-loader list --editor cursor
+ag-loader list --editor vscode
+```
+
+### `ag-loader agents`
+
+Gestiona el directorio de agentes de Claude Code.
+
+```bash
+ag-loader agents set-path "E:\mis-agentes"   # cambiar la ruta
+ag-loader agents list                         # listar agentes disponibles
+```
+
+### `ag-loader config`
+
+Gestiona la configuración general del CLI.
+
+```bash
+ag-loader config set-path "C:\mis-skills"    # directorio de skills
+ag-loader config set-agents-path "E:\agentes" # directorio de agentes
+ag-loader config get-path                    # ver rutas activas
+ag-loader config reset                       # restaurar predeterminados
+```
+
+---
+
+## Tabla de comandos
+
+| Comando                            | Descripción                                  |
+| ---------------------------------- | -------------------------------------------- |
+| `ag-loader init`                   | Flujo interactivo (detecta config existente) |
+| `ag-loader list`                   | Ver stacks de skills disponibles             |
+| `ag-loader list --editor <e>`      | Filtrar por editor                           |
+| `ag-loader agents set-path <ruta>` | Cambiar directorio de agentes                |
+| `ag-loader agents list`            | Ver agentes disponibles                      |
+| `ag-loader config set-path <ruta>` | Cambiar directorio de skills                 |
+| `ag-loader config get-path`        | Ver rutas activas                            |
+| `ag-loader config reset`           | Restaurar predeterminados                    |
+| `ag-loader --version`              | Ver versión                                  |
+| `ag-loader --help`                 | Ver ayuda                                    |
+
+---
+
+## Directorio de configuración global
+
+La configuración del CLI se guarda en `~/.ag-loader.json`:
+
+```json
+{
+  "registryPath": "C:\\Users\\tú\\.ag-skills",
+  "agentsPath": "E:\\mis-agentes"
+}
+```
+
+Las rutas predeterminadas son:
+
+- **Skills**: `~/.ag-skills/`
+- **Agentes**: `~/.ag-agents/`
 
 ---
 
 ## Desarrollo local
 
 ```bash
-# Clonar el repositorio
 git clone https://github.com/bandann/ag-loader.git
 cd ag-loader
-
-# Instalar dependencias
 npm install
-
-# Compilar TypeScript
 npm run build
-
-# Enlazar globalmente para pruebas
-npm link
-
-# Desarrollo con hot-reload
-npm run dev
+npm link         # instalar globalmente para pruebas
+npm run dev      # modo desarrollo con ts-node
+npm test         # correr tests
 ```
 
 ---
@@ -180,7 +281,7 @@ npm run dev
 
 1. Haz fork del repositorio
 2. Crea una rama: `git checkout -b feature/mi-feature`
-3. Realiza tus cambios y compila: `npm run build`
+3. Haz tus cambios y corre los tests: `npm test`
 4. Abre un Pull Request
 
 ---
