@@ -5,9 +5,11 @@ import os from 'os';
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export type EditorKey = 'antigravity' | 'cursor' | 'vscode';
+export type ClaudeAITool = 'claude-code' | 'codex' | 'copilot' | 'other';
 
 export interface AgLoaderConfig {
   registryPath: string;
+  agentsPath: string;
 }
 
 export interface CategoryEntry {
@@ -16,31 +18,47 @@ export interface CategoryEntry {
   absPath: string;
 }
 
+export interface AgentStackEntry {
+  name: string;     // agent filename
+  absPath: string;  // full path to file
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const CONFIG_FILE = path.join(os.homedir(), '.ag-loader.json');
 
-export const DEFAULT_REGISTRY = path.join(os.homedir(), '.ag-skills');
+export const DEFAULT_REGISTRY       = path.join(os.homedir(), '.ag-skills');
+export const DEFAULT_AGENTS_REGISTRY = path.join(os.homedir(), '.ag-agents');
 
 export async function readConfig(): Promise<AgLoaderConfig> {
-  if (!(await fs.pathExists(CONFIG_FILE))) return { registryPath: DEFAULT_REGISTRY };
+  if (!(await fs.pathExists(CONFIG_FILE))) {
+    return { registryPath: DEFAULT_REGISTRY, agentsPath: DEFAULT_AGENTS_REGISTRY };
+  }
   try {
     const raw = await fs.readJson(CONFIG_FILE);
-    return { registryPath: raw.registryPath ?? DEFAULT_REGISTRY };
+    return {
+      registryPath: raw.registryPath ?? DEFAULT_REGISTRY,
+      agentsPath:   raw.agentsPath   ?? DEFAULT_AGENTS_REGISTRY,
+    };
   } catch {
-    return { registryPath: DEFAULT_REGISTRY };
+    return { registryPath: DEFAULT_REGISTRY, agentsPath: DEFAULT_AGENTS_REGISTRY };
   }
 }
 
-export async function writeConfig(config: AgLoaderConfig): Promise<void> {
-  await fs.writeJson(CONFIG_FILE, config, { spaces: 2 });
+export async function writeConfig(config: Partial<AgLoaderConfig>): Promise<void> {
+  const current = await readConfig();
+  await fs.writeJson(CONFIG_FILE, { ...current, ...config }, { spaces: 2 });
 }
 
 export async function getActiveRegistryPath(): Promise<string> {
   return (await readConfig()).registryPath;
 }
 
-// ─── Helpers de navegación (Editor → Stack → Category) ───────────────────────
+export async function getActiveAgentsPath(): Promise<string> {
+  return (await readConfig()).agentsPath;
+}
+
+// ─── Helpers de navegación de Skills (Editor → Stack → Category) ──────────────
 
 /**
  * Devuelve la ruta `<registry>/<editor>/`
@@ -107,6 +125,39 @@ export async function getEditorTree(
   for (const stack of stacks) {
     const categories = await getCategoriesForStack(registryPath, editor, stack);
     tree.push({ stack, categories });
+  }
+  return tree;
+}
+
+// ─── Helpers de navegación de Agents (Tool → Stack) ──────────────────────────
+
+/**
+ * Devuelve los stacks disponibles para una herramienta dentro del registro de agentes.
+ * Estructura: <agentsPath>/<tool>/<stack>/
+ */
+export async function getAgentStacksForTool(
+  agentsPath: string,
+  tool: string
+): Promise<string[]> {
+  const toolPath = path.join(agentsPath, tool);
+  await fs.ensureDir(toolPath);
+  const entries = await fs.readdir(toolPath, { withFileTypes: true });
+  return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+}
+
+/**
+ * Árbol completo de agentes: tool → stacks
+ */
+export async function getAgentsTree(
+  agentsPath: string
+): Promise<{ tool: string; stacks: string[] }[]> {
+  if (!(await fs.pathExists(agentsPath))) return [];
+  const entries = await fs.readdir(agentsPath, { withFileTypes: true });
+  const tools = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  const tree = [];
+  for (const tool of tools) {
+    const stacks = await getAgentStacksForTool(agentsPath, tool);
+    tree.push({ tool, stacks });
   }
   return tree;
 }

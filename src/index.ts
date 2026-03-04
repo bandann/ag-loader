@@ -5,15 +5,19 @@ import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
 import prompts from 'prompts';
-import { ensureRegistryExists, getRegistryPath } from './registry';
+import { ensureRegistryExists } from './registry';
 import {
   readConfig,
   writeConfig,
   getActiveRegistryPath,
+  getActiveAgentsPath,
   getStacksForEditor,
   getCategoriesForStack,
   getEditorTree,
+  getAgentStacksForTool,
+  getAgentsTree,
   DEFAULT_REGISTRY,
+  DEFAULT_AGENTS_REGISTRY,
   type EditorKey,
   type CategoryEntry,
 } from './config';
@@ -93,9 +97,7 @@ async function readMarkdown(filePath: string): Promise<string> {
   return raw;
 }
 
-// ─── Injection: Antigravity (.agent/skills/<name>/SKILL.md) ──────────────────
-// Antigravity skills require: .agent/skills/<skill-name>/SKILL.md
-// Each SKILL.md has YAML frontmatter with name + description.
+// ─── Injection Logic ─────────────────────────────────────────────────────────
 
 async function injectAntigravity(category: CategoryEntry): Promise<void> {
   const skillsDir = path.join(process.cwd(), '.agent', 'skills');
@@ -118,18 +120,7 @@ async function injectAntigravity(category: CategoryEntry): Promise<void> {
     await fs.writeFile(dest, finalContent, 'utf-8');
     console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.agent/skills/${baseName}/SKILL.md`)}`);
   }
-
-  console.log('');
-  console.log(
-    chalk.bold.green(`✅ ${category.files.length} skill(s) → `) +
-    chalk.white('.agent/skills/') +
-    chalk.dim('  (Antigravity cargará estos skills automáticamente)')
-  );
 }
-
-// ─── Injection: Cursor (.cursor/rules/*.mdc) ─────────────────────────────────
-// Cursor lee TODAS las reglas en .cursor/rules/*.mdc.
-// Cada archivo necesita frontmatter válido con description + globs + alwaysApply.
 
 async function injectCursor(
   category: CategoryEntry,
@@ -143,7 +134,7 @@ async function injectCursor(
 
   for (const file of category.files) {
     const src      = path.join(category.absPath, file);
-    const ext      = path.extname(file);                     // .md or .mdc
+    const ext      = path.extname(file);
     const baseName = path.basename(file, ext);
     const destName = baseName + '.mdc';
     const dest     = path.join(destDir, destName);
@@ -157,19 +148,7 @@ async function injectCursor(
     await fs.writeFile(dest, finalContent, 'utf-8');
     console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.cursor/rules/${destName}`)}`);
   }
-
-  console.log('');
-  console.log(
-    chalk.bold.green(`✅ ${category.files.length} regla(s) → `) +
-    chalk.white('.cursor/rules/') +
-    chalk.dim(`  (globs: ${globs}, alwaysApply: ${alwaysApply})`)
-  );
 }
-
-// ─── Injection: VS Code / Copilot (.github/instructions/) ────────────────────
-// GitHub Copilot soporta:
-//   - .github/instructions/*.instructions.md  (por contexto, con applyTo)
-//   - .github/copilot-instructions.md          (repo-wide, todo consolidado)
 
 async function injectCopilot(
   category: CategoryEntry,
@@ -177,10 +156,8 @@ async function injectCopilot(
   mode: 'instructions' | 'global'
 ): Promise<void> {
   if (mode === 'instructions') {
-    // Modo instrucciones por contexto
     const destDir = path.join(process.cwd(), '.github', 'instructions');
     await fs.ensureDir(destDir);
-
     const applyTo = globForStack(stackName);
 
     for (const file of category.files) {
@@ -197,15 +174,7 @@ async function injectCopilot(
       await fs.writeFile(dest, finalContent, 'utf-8');
       console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.github/instructions/${destName}`)}`);
     }
-
-    console.log('');
-    console.log(
-      chalk.bold.green(`✅ ${category.files.length} instrucción(es) → `) +
-      chalk.white('.github/instructions/') +
-      chalk.dim(`  (applyTo: ${applyTo})`)
-    );
   } else {
-    // Modo global: todo consolidado en un único archivo
     const destDir = path.join(process.cwd(), '.github');
     await fs.ensureDir(destDir);
     const dest = path.join(destDir, 'copilot-instructions.md');
@@ -219,9 +188,104 @@ async function injectCopilot(
     }
 
     await fs.writeFile(dest, sections.join('\n\n---\n\n'), 'utf-8');
-    console.log(`   ${chalk.green('✔')} ${chalk.cyan('.github/copilot-instructions.md')} (${category.files.length} skill(s) consolidados)`);
-    console.log('');
-    console.log(chalk.bold.green(`✅ Consolidado en `) + chalk.white('.github/copilot-instructions.md'));
+    console.log(`   ${chalk.green('✔')} ${chalk.cyan('.github/copilot-instructions.md')}`);
+  }
+}
+// ─── Project Detection Helpers ──────────────────────────────────────────────
+
+interface ProjectConfig {
+  agents_registry?: string;
+  stack?: string;
+  version?: string;
+}
+
+async function getProjectConfig(): Promise<ProjectConfig | null> {
+  const configPath = path.join(process.cwd(), '.claude', 'project.config.yml');
+  if (await fs.pathExists(configPath)) {
+    try {
+      const content = await fs.readFile(configPath, 'utf-8');
+      const lines = content.split('\n');
+      const config: ProjectConfig = {};
+      
+      for (const line of lines) {
+        if (line.trim().startsWith('agents_registry:')) config.agents_registry = line.split(': ')[1]?.trim();
+        if (line.trim().startsWith('stack:')) config.stack = line.split(': ')[1]?.trim();
+        if (line.trim().startsWith('version:')) config.version = line.split(': ')[1]?.trim();
+      }
+      return config;
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function detectExistingConfig() {
+  const projectRoot = process.cwd();
+  const detected: string[] = [];
+  
+  if (await fs.pathExists(path.join(projectRoot, '.claude'))) detected.push('Claude Code');
+  if (await fs.pathExists(path.join(projectRoot, '.cursor', 'rules'))) detected.push('Cursor Rules');
+  if (await fs.pathExists(path.join(projectRoot, '.github', 'instructions'))) detected.push('GitHub Copilot');
+  if (await fs.pathExists(path.join(projectRoot, '.agent', 'skills'))) detected.push('Antigravity');
+  
+  return detected;
+}
+
+// ─── Inyección de Agentes / Skills ──────────────────────────────────────────
+
+async function injectClaudeCode(agentsRegistry: string, stackName: string): Promise<void> {
+  const stackPath = path.join(agentsRegistry, 'claude-code', stackName);
+  const projectRoot = process.cwd();
+
+  // 1. Copy CLAUDE.md to project root
+  const claudeMdSrc = path.join(stackPath, 'CLAUDE.md');
+  if (await fs.pathExists(claudeMdSrc)) {
+    await fs.copy(claudeMdSrc, path.join(projectRoot, 'CLAUDE.md'));
+    console.log(`   ${chalk.green('✔')} ${chalk.cyan('CLAUDE.md')} (root)`);
+  }
+
+  // 2. Create .claude/project.config.yml if not exists
+  const claudeDir = path.join(projectRoot, '.claude');
+  const configFile = path.join(claudeDir, 'project.config.yml');
+  await fs.ensureDir(claudeDir);
+  
+  if (!(await fs.pathExists(configFile))) {
+    const basicConfig = `project_name: ${path.basename(projectRoot)}\nstack: ${stackName}\nagents_registry: ${agentsRegistry}\nversion: 1.0.0\n# Configuración local - NO SUBIR AL REPO\n`;
+    await fs.writeFile(configFile, basicConfig, 'utf-8');
+    console.log(`   ${chalk.green('✔')} ${chalk.cyan('.claude/project.config.yml')}`);
+  }
+
+  // 3. Copy agents directory
+  const agentsSrc = path.join(stackPath, 'agents');
+  const agentsDest = path.join(claudeDir, 'agents');
+  if (await fs.pathExists(agentsSrc)) {
+    await fs.ensureDir(agentsDest);
+    await fs.copy(agentsSrc, agentsDest);
+    const files = await fs.readdir(agentsSrc);
+    console.log(`   ${chalk.green('✔')} ${chalk.cyan(`.claude/agents/`)} (${files.length} agentes)`);
+  }
+
+  // 4. Update .gitignore
+  const gitignorePath = path.join(projectRoot, '.gitignore');
+  const gitignoreEntries = ['\n# Claude Code (local agents)', '.claude/', 'CLAUDE.md'];
+  
+  if (await fs.pathExists(gitignorePath)) {
+    let content = await fs.readFile(gitignorePath, 'utf-8');
+    let modified = false;
+    for (const entry of gitignoreEntries) {
+      if (!content.includes(entry.trim()) && entry.trim() !== '') {
+        content += (content.endsWith('\n') ? '' : '\n') + entry;
+        modified = true;
+      }
+    }
+    if (modified) {
+      await fs.writeFile(gitignorePath, content, 'utf-8');
+      console.log(`   ${chalk.green('✔')} ${chalk.cyan('.gitignore')} (actualizado)`);
+    }
+  } else {
+    await fs.writeFile(gitignorePath, gitignoreEntries.join('\n'), 'utf-8');
+    console.log(`   ${chalk.green('✔')} ${chalk.cyan('.gitignore')} (creado)`);
   }
 }
 
@@ -231,259 +295,302 @@ const program = new Command();
 
 program
   .name('ag-loader')
-  .description('Carga skills de IA al proyecto actual. Compatible con Antigravity, Cursor y VS Code.')
-  .version('1.0.0');
+  .description('Carga skills y agentes de IA al proyecto actual.')
+  .version('1.2.0');
 
 // ─── Comando: list ────────────────────────────────────────────────────────────
 
 program
   .command('list')
-  .description('Muestra todos los stacks y archivos disponibles por editor')
-  .option('-e, --editor <editor>', 'Filtrar: antigravity | cursor | vscode')
+  .description('Muestra todos los stacks y archivos disponibles')
+  .option('-e, --editor <editor>', 'Filtrar por editor: antigravity | cursor | vscode')
   .action(async (opts: { editor?: string }) => {
     const registryPath = await getActiveRegistryPath();
-    const editorsToShow = opts.editor
-      ? EDITORS.filter((e) => e.key === opts.editor)
-      : EDITORS;
-
+    const agentsPath = await getActiveAgentsPath();
+    
     console.log('');
-    console.log(chalk.bold('📂 Skills disponibles'));
+    console.log(chalk.bold('📂 Skills disponibles (Registry)'));
     console.log(chalk.dim(`   ${registryPath}`));
     console.log('');
 
-    for (const editor of editorsToShow) {
+    const editorsToDisplay = opts.editor 
+      ? EDITORS.filter(e => e.key === opts.editor)
+      : EDITORS;
+
+    for (const editor of editorsToDisplay) {
       const tree = await getEditorTree(registryPath, editor.key);
-      const totalStacks = tree.length;
-
-      console.log(chalk.bold.magenta(`  ┌─ ${editor.label.toUpperCase()} `) + chalk.dim(`(${totalStacks} stack(s))`));
-
-      if (tree.length === 0) {
-        console.log(chalk.dim(`  │   (sin stacks — añade carpetas en ${path.join(registryPath, editor.key)})`));
+      console.log(chalk.bold.magenta(`  ┌─ ${editor.label.toUpperCase()} `));
+      if (tree.length === 0) console.log(chalk.dim(`  │   (sin stacks)`));
+      for (const item of tree) {
+        console.log(`  │  ${chalk.cyan(`[${item.stack}]`)}`);
       }
-
-      for (const { stack, categories } of tree) {
-        const total = categories.reduce((a, c) => a + c.files.length, 0);
-        console.log(`  │  ${chalk.bold.cyan(`[${stack}]`)} ${chalk.dim(`${total} archivo(s)`)}`);
-
-        for (const cat of categories) {
-          if (cat.name === '__root__') {
-            for (const f of cat.files) console.log(`  │     ${chalk.dim('•')} ${f}`);
-          } else {
-            console.log(`  │     ${chalk.yellow('▸')} ${chalk.bold(cat.name)} ${chalk.dim(`(${cat.files.length})`)}`);
-            for (const f of cat.files) console.log(`  │        ${chalk.dim('•')} ${f}`);
-          }
-        }
-      }
-
       console.log(chalk.bold.magenta(`  └${'─'.repeat(45)}`));
-      console.log('');
     }
+
+    console.log('\n' + chalk.bold('🤖 Agentes disponibles (Claude Code)'));
+    console.log(chalk.dim(`   ${agentsPath}`));
+    console.log('');
+    
+    const agentsTree = await getAgentsTree(agentsPath);
+    for (const item of agentsTree) {
+      console.log(chalk.bold.yellow(`  ┌─ ${item.tool.toUpperCase()} `));
+      for (const stack of item.stacks) {
+        console.log(`  │  ${chalk.cyan(`[${stack}]`)}`);
+      }
+      console.log(chalk.bold.yellow(`  └${'─'.repeat(45)}`));
+    }
+    console.log('');
   });
 
 // ─── Comando: config ──────────────────────────────────────────────────────────
 
-const configCmd = program.command('config').description('Gestiona la configuración de ag-loader');
+const configCmd = program.command('config').description('Gestiona la configuración');
 
 configCmd
   .command('set-path <ruta>')
   .description('Define el directorio raíz de tus skills')
   .action(async (ruta: string) => {
     const resolved = path.resolve(ruta);
-    if (!(await fs.pathExists(resolved))) {
-      console.log(chalk.yellow(`\n⚠  La ruta no existe: ${resolved}\n`));
-      process.exit(1);
-    }
+    await fs.ensureDir(resolved);
     await writeConfig({ registryPath: resolved });
-    console.log(chalk.bold.green(`\n✅ Ruta actualizada → ${chalk.cyan(resolved)}\n`));
-    console.log(chalk.dim('   Ejecuta "ag-loader list" para verificar tu estructura.\n'));
+    console.log(chalk.green(`\n✅ Ruta de skills actualizada: ${resolved}\n`));
+  });
+
+configCmd
+  .command('set-agents-path <ruta>')
+  .description('Define el directorio raíz de tus agentes (Claude Code)')
+  .action(async (ruta: string) => {
+    const resolved = path.resolve(ruta);
+    await fs.ensureDir(resolved);
+    await writeConfig({ agentsPath: resolved });
+    console.log(chalk.green(`\n✅ Ruta de agentes actualizada: ${resolved}\n`));
   });
 
 configCmd
   .command('get-path')
-  .description('Muestra el directorio activo')
   .action(async () => {
     const config = await readConfig();
-    console.log(`\n   ${chalk.bold('Directorio activo:')} ${chalk.cyan(config.registryPath)}\n`);
+    console.log(`\n   ${chalk.bold('Skills Path:')}  ${chalk.cyan(config.registryPath)}`);
+    console.log(`   ${chalk.bold('Agents Path:')}  ${chalk.cyan(config.agentsPath)}\n`);
   });
 
 configCmd
   .command('reset')
-  .description('Restablece al directorio predeterminado (~/.ag-skills/)')
+  .description('Restablece rutas predeterminadas')
   .action(async () => {
-    await writeConfig({ registryPath: DEFAULT_REGISTRY });
-    console.log(chalk.bold.green(`\n✅ Restablecido → ${chalk.cyan(DEFAULT_REGISTRY)}\n`));
+    await writeConfig({ registryPath: DEFAULT_REGISTRY, agentsPath: DEFAULT_AGENTS_REGISTRY });
+    console.log(chalk.green('\n✅ Configuración restablecida.\n'));
+  });
+
+// ─── Comando: agents (Nuevo) ──────────────────────────────────────────────────
+
+const agentsCmd = program.command('agents').description('Gestiona los agentes para Claude Code');
+
+agentsCmd
+  .command('set-path <ruta>')
+  .description('Define el directorio de agentes')
+  .action(async (ruta: string) => {
+    const resolved = path.resolve(ruta);
+    await fs.ensureDir(resolved);
+    await writeConfig({ agentsPath: resolved });
+    console.log(chalk.green(`\n✅ Ruta de agentes actualizada: ${resolved}\n`));
+  });
+
+agentsCmd
+  .command('list')
+  .action(async () => {
+    const agentsPath = await getActiveAgentsPath();
+    const tree = await getAgentsTree(agentsPath);
+    console.log(`\n📂 Agentes en ${chalk.dim(agentsPath)}\n`);
+    for (const tool of tree) {
+      console.log(`${chalk.bold.yellow(tool.tool)}:`);
+      tool.stacks.forEach(s => console.log(`  - ${s}`));
+    }
+    console.log('');
   });
 
 // ─── Comando: init ────────────────────────────────────────────────────────────
 
 program
   .command('init')
-  .description('Carga skills al proyecto actual (flujo interactivo)')
+  .description('Carga skills o agentes al proyecto (flujo interactivo)')
   .action(async () => {
     await ensureRegistryExists();
+    const config = await readConfig();
+    const projectConfig = await getProjectConfig();
+    
+    console.log('\n' + chalk.bold('  ag-loader ') + chalk.dim('— cargador de IA v1.2.0\n'));
 
-    const registryPath = await getActiveRegistryPath();
-
-    console.log('');
-    console.log(chalk.bold('  ag-loader ') + chalk.dim('— cargador de skills de IA'));
-    console.log('');
-
-    // ── Paso 1: Editor ─────────────────────────────────────────────────────
-
-    const { editor } = await prompts(
-      {
+    // ── Paso 0: Detección Automática ──────────────────────────────────────
+    const existing = await detectExistingConfig();
+    if (existing.length > 0) {
+      console.log(`   ${chalk.blue('ℹ')} Se detectó configuración de: ${chalk.cyan(existing.join(', '))}`);
+      
+      const { action } = await prompts({
         type: 'select',
-        name: 'editor',
-        message: '🖥  ¿Con qué herramienta de IA trabajas?',
-        choices: EDITORS.map((e) => ({
-          title: `${chalk.bold(e.label.padEnd(16))} ${chalk.dim(e.hint)}`,
-          value: e.key,
-        })),
-      },
-      { onCancel: () => process.exit(0) }
-    );
-    const selectedEditor = editor as EditorKey;
+        name: 'action',
+        message: '¿Qué quieres hacer?',
+        choices: [
+          { title: 'Usar existentes (no hacer nada)', value: 'keep' },
+          { title: 'Re-cargar / Actualizar agentes', value: 'update' },
+          { title: 'Configurar nueva herramienta',  value: 'new' },
+        ]
+      }, { onCancel: () => process.exit(0) });
 
-    // ── Paso 2: Stack ──────────────────────────────────────────────────────
-
-    const stacks = await getStacksForEditor(registryPath, selectedEditor);
-
-    if (stacks.length === 0) {
-      console.log('');
-      console.log(chalk.yellow(`⚠  No hay stacks para "${selectedEditor}".`));
-      console.log(chalk.dim(`   Añade carpetas en: ${path.join(registryPath, selectedEditor)}`));
-      console.log('');
-      process.exit(0);
+      if (action === 'keep') {
+        console.log(chalk.green('\n✅ Manteniendo configuración actual.\n'));
+        return;
+      }
+      
+      if (action === 'update' && projectConfig?.agents_registry && projectConfig?.stack) {
+        console.log(`\n🔄 Actualizando agentes para ${chalk.bold(projectConfig.stack)} desde el origen conocido...`);
+        await injectClaudeCode(projectConfig.agents_registry, projectConfig.stack);
+        console.log(chalk.bold.green(`\n🎉 Agentes actualizados correctamente.\n`));
+        return;
+      }
     }
 
-    const { stack } = await prompts(
-      {
+    // ── Paso 1: Confirmar Directorio de Origen ───────────────────────────
+    const { sourcePath } = await prompts({
+      type: 'select',
+      name: 'sourcePath',
+      message: '📍 ¿Desde qué directorio quieres cargar?',
+      choices: [
+        { 
+          title: `${chalk.bold('Agentes')} (global)  ${chalk.dim(config.agentsPath)}`, 
+          value: { path: config.agentsPath, type: 'agents' } 
+        },
+        { 
+          title: `${chalk.bold('Skills')} (global)   ${chalk.dim(config.registryPath)}`, 
+          value: { path: config.registryPath, type: 'skills' } 
+        },
+        { 
+          title: `${chalk.bold('Otro')} (personalizado)...`, 
+          value: 'custom' 
+        },
+      ]
+    }, { onCancel: () => process.exit(0) });
+
+    let activePath = '';
+    let sourceType: 'agents' | 'skills' = 'agents';
+
+    if (sourcePath === 'custom') {
+      const { customPath } = await prompts({
+        type: 'text',
+        name: 'customPath',
+        message: 'Introduce la ruta absoluta del directorio:',
+        validate: async (input) => (await fs.pathExists(input)) || 'La ruta no existe'
+      }, { onCancel: () => process.exit(0) });
+      activePath = customPath;
+      sourceType = (await fs.pathExists(path.join(activePath, 'claude-code'))) ? 'agents' : 'skills';
+    } else {
+      activePath = sourcePath.path;
+      sourceType = sourcePath.type;
+    }
+
+    // ── Paso 2: Herramienta de IA ──────────────────────────────────────────
+    
+    const { tool } = await prompts({
+      type: 'select',
+      name: 'tool',
+      message: '🖥  ¿Qué herramienta de IA de desarrollo quieres usar?',
+      choices: [
+        { title: `${chalk.bold('CLAUDE CODE')}     ${chalk.dim('Agentes, CLAUDE.md, .claude/')}`, value: 'claude-code', disabled: sourceType !== 'agents' && activePath === config.registryPath },
+        { title: `${chalk.bold('GITHUB COPILOT')}  ${chalk.dim('Instrucciones VS Code .github/')}`, value: 'copilot', disabled: sourceType !== 'skills' && activePath === config.agentsPath },
+        { title: `${chalk.bold('OTRAS (Cursor, AG)')} ${chalk.dim('Skills y reglas standard')}`,   value: 'other', disabled: sourceType !== 'skills' && activePath === config.agentsPath },
+      ]
+    }, { onCancel: () => process.exit(0) });
+
+    if (tool === 'claude-code') {
+      const stacks = await getAgentStacksForTool(activePath, 'claude-code');
+      if (stacks.length === 0) {
+        console.log(chalk.yellow('\n⚠ No se encontraron agentes para Claude Code en: ') + activePath);
+        process.exit(0);
+      }
+      const { stack } = await prompts({
         type: 'select',
         name: 'stack',
-        message: '📦 ¿Qué stack/tecnología?',
-        choices: stacks.map((s) => ({ title: s, value: s })),
-      },
-      { onCancel: () => process.exit(0) }
-    );
-    const selectedStack = stack as string;
+        message: '📦 ¿Para qué tecnologia quieres cargar agentes?',
+        choices: stacks.map(s => ({ title: s, value: s }))
+      }, { onCancel: () => process.exit(0) });
 
-    // ── Paso 3: Categoría ──────────────────────────────────────────────────
+      console.log('');
+      await injectClaudeCode(activePath, stack);
+      console.log(chalk.bold.green(`\n🎉 Agentes de "${stack}" cargados correctamente.\n`));
 
-    const categories = await getCategoriesForStack(registryPath, selectedEditor, selectedStack);
-    const ALL_KEY    = '__all__';
-    let selectedCategories: CategoryEntry[] = [];
+    } else if (tool === 'copilot') {
+      const stacks = await getStacksForEditor(activePath, 'vscode');
+      const { stack } = await prompts({
+        type: 'select',
+        name: 'stack',
+        message: '📦 ¿Qué stack?',
+        choices: stacks.map(s => ({ title: s, value: s }))
+      }, { onCancel: () => process.exit(0) });
+      
+      const cats = await getCategoriesForStack(activePath, 'vscode', stack);
+      const { mode } = await prompts({
+        type: 'select',
+        name: 'mode',
+        message: '📁 Modo de generación:',
+        choices: [
+          { title: 'Por contexto (.github/instructions/)', value: 'instructions' },
+          { title: 'Global (.github/copilot-instructions.md)', value: 'global' },
+        ]
+      }, { onCancel: () => process.exit(0) });
 
-    if (categories.length === 1 && categories[0].name === '__root__') {
-      selectedCategories = [categories[0]];
-    } else {
-      const { category } = await prompts(
-        {
-          type: 'select',
-          name: 'category',
-          message: `🗂  ¿Qué categoría de "${selectedStack}"?`,
-          choices: [
-            {
-              title: `${chalk.bold('✦ Todo el stack')}  ${chalk.dim('carga todas las categorías')}`,
-              value: ALL_KEY,
-            },
-            ...categories.map((c) => ({
-              title: `${chalk.bold(c.name.padEnd(16))} ${chalk.dim(`${c.files.length} archivo(s)`)}`,
-              value: c.name,
-            })),
-          ],
-        },
-        { onCancel: () => process.exit(0) }
-      );
+      for (const cat of cats) await injectCopilot(cat, stack, mode);
+      console.log(chalk.bold.green('\n🎉 Instrucciones de Copilot cargadas.\n'));
 
-      selectedCategories =
-        category === ALL_KEY
-          ? categories
-          : [categories.find((c) => c.name === category)!];
-    }
+    } else if (tool === 'other') {
+      const { editor } = await prompts({
+        type: 'select',
+        name: 'editor',
+        message: '🔍 Selecciona el formato de skills:',
+        choices: [
+          { title: 'Antigravity (.agent/skills/)', value: 'antigravity' },
+          { title: 'Cursor (.cursor/rules/)',      value: 'cursor' },
+        ]
+      }, { onCancel: () => process.exit(0) });
 
-    // ── Paso 4: Opciones específicas por editor ────────────────────────────
+      // Si es Antigravity, filtramos solo Claude y antigravity-rules
+      let stacks = await getStacksForEditor(activePath, editor as EditorKey);
+      if (editor === 'antigravity') {
+        stacks = stacks.filter(s => s === 'claude-code' || s === 'antigravity-rules');
+        if (stacks.length === 0) {
+          console.log(chalk.yellow('\n⚠ No se encontraron skills compatibles con Antigravity en este directorio.'));
+          process.exit(0);
+        }
+      }
 
-    let alwaysApply = false;
-    let copilotMode: 'instructions' | 'global' = 'instructions';
+      const { stack } = await prompts({
+        type: 'select',
+        name: 'stack',
+        message: '📦 ¿Qué stack?',
+        choices: stacks.map(s => ({ title: s, value: s }))
+      }, { onCancel: () => process.exit(0) });
 
-    if (selectedEditor === 'cursor') {
-      const { apply } = await prompts(
-        {
+      const cats = await getCategoriesForStack(activePath, editor as EditorKey, stack);
+      
+      let alwaysApply = false;
+      if (editor === 'cursor') {
+        const { apply } = await prompts({
           type: 'select',
           name: 'apply',
           message: '⚙️  ¿Cuándo deben aplicarse las reglas?',
           choices: [
-            {
-              title: `Siempre (alwaysApply: true)   ${chalk.dim('se activan en todos los archivos')}`,
-              value: true,
-            },
-            {
-              title: `Por contexto (alwaysApply: false) ${chalk.dim('solo cuando hacen match los globs')}`,
-              value: false,
-            },
-          ],
-        },
-        { onCancel: () => process.exit(0) }
-      );
-      alwaysApply = apply as boolean;
-    }
-
-    if (selectedEditor === 'vscode') {
-      const { mode } = await prompts(
-        {
-          type: 'select',
-          name: 'mode',
-          message: '📁 ¿Cómo quieres generar las instrucciones para Copilot?',
-          choices: [
-            {
-              title: `Por contexto (.github/instructions/)  ${chalk.dim('un .instructions.md por skill con applyTo')}`,
-              value: 'instructions',
-            },
-            {
-              title: `Global (.github/copilot-instructions.md) ${chalk.dim('todo consolidado en un solo archivo')}`,
-              value: 'global',
-            },
-          ],
-        },
-        { onCancel: () => process.exit(0) }
-      );
-      copilotMode = mode as 'instructions' | 'global';
-    }
-
-    // ── Paso 5: Inyección ──────────────────────────────────────────────────
-
-    console.log('');
-
-    for (const cat of selectedCategories) {
-      if (cat.files.length === 0) {
-        console.log(chalk.dim(`  Saltando "${cat.name}" — sin archivos .md`));
-        continue;
+            { title: 'Siempre (alwaysApply: true)', value: true },
+            { title: 'Por contexto (match globs)',  value: false },
+          ]
+        }, { onCancel: () => process.exit(0) });
+        alwaysApply = apply;
       }
 
-      if (selectedCategories.length > 1) {
-        console.log(chalk.dim(`  → cargando categoría: ${chalk.bold(cat.name)}`));
+      for (const cat of cats) {
+        if (editor === 'antigravity') await injectAntigravity(cat);
+        else await injectCursor(cat, stack, alwaysApply);
       }
-
-      switch (selectedEditor) {
-        case 'antigravity':
-          await injectAntigravity(cat);
-          break;
-        case 'cursor':
-          await injectCursor(cat, selectedStack, alwaysApply);
-          break;
-        case 'vscode':
-          await injectCopilot(cat, selectedStack, copilotMode);
-          break;
-      }
+      console.log(chalk.bold.green('\n🎉 Skills/Reglas cargadas correctamente.\n'));
     }
-
-    if (selectedCategories.length > 1) {
-      const total = selectedCategories.reduce((a, c) => a + c.files.length, 0);
-      console.log('');
-      console.log(chalk.bold.green(`🎉 Stack completo "${selectedStack}" cargado — ${total} archivo(s) en total`));
-    }
-
-    console.log('');
   });
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
